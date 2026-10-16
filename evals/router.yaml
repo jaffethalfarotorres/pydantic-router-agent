@@ -1,0 +1,162 @@
+# Router + tool behaviour on realistic inputs. Gate: pass@k >= 0.90.
+#
+# expect keys (all optional): status, intent, method, tool, data (subset match).
+# A list means "any of these". `tool: null` means no tool may run.
+# requires_llm: true -> skipped with --backend none, run against a real provider.
+# Cases named regression-* pin bugs that were fixed; never delete them.
+
+- id: invoice-basic
+  text: |
+    ACME Hosting LLC
+    Invoice #2026-118
+    Bill to: Example Corp
+    Subtotal: $1,150.00
+    Tax: $100.00
+    Total due: $1,250.00
+    Payment terms: Net 30
+  expect:
+    status: completed
+    intent: invoice
+    method: regex
+    tool: extract_invoice_total
+    data: {total: "1250.00", currency: USD, reconciles: true}
+
+- id: invoice-eur-bilingual
+  text: "Factura / Invoice F-2026-77\nSubtotal: €200.00\nIVA: €26.00\nTotal: €226.00"
+  expect:
+    intent: invoice
+    data: {total: "226.00", currency: EUR, tax: "26.00", reconciles: true}
+
+- id: invoice-crc-code
+  text: |
+    INVOICE 0042
+    Bill to: Corner Bakery
+    TOTAL 45,000.00 CRC
+    Payment terms: Net 15
+  expect:
+    intent: invoice
+    data: {total: "45000.00", currency: CRC}
+
+- id: invoice-does-not-reconcile
+  text: |
+    Invoice 311
+    Subtotal: $100.00
+    Tax: $13.00
+    Total: $120.00
+  expect:
+    status: completed
+    data: {reconciles: false}
+
+- id: regression-subtotal-read-as-total
+  text: |
+    Invoice 9
+    Total: $80.00
+    Sub-total: $70.00
+    Tax: $10.00
+  expect:
+    data: {total: "80.00", subtotal: "70.00"}
+
+- id: academic-brief
+  text: |
+    CS-101 Introduction to Programming
+    Assignment 3: Recursion
+    Due date: 2026-11-20
+    Submit a single .py file. Worth 20 points.
+  expect:
+    status: completed
+    intent: academic_doc
+    tool: extract_academic_metadata
+    data: {course_code: CS-101, due_date: "2026-11-20", doc_kind: assignment_brief}
+
+- id: academic-worked-example
+  text: |
+    MAT-210 Calculus I
+    Worked example 4.2 (solution)
+    The answer key for the homework is below.
+  expect:
+    intent: academic_doc
+    data: {doc_kind: worked_example}
+
+- id: academic-syllabus-without-due-date
+  text: |
+    Syllabus - PSY-120 Research Methods
+    Instructor: Dr. Rivera
+    Grading criteria: two exams (60 points) and one lab report.
+    Late submission policy: 10% per day.
+  expect:
+    status: completed
+    intent: academic_doc
+    data: {course_code: PSY-120, due_date: null}
+
+- id: code-python-traceback
+  text: |
+    Why does this fail?
+    ```python
+    data = {}
+    print(data["missing"])
+    ```
+    Traceback (most recent call last):
+    KeyError: 'missing'
+  expect:
+    status: completed
+    intent: code_question
+    data: {language: python, error_type: KeyError}
+
+- id: code-javascript
+  text: |
+    My JavaScript function returns undefined:
+    ```js
+    function total(items) { items.reduce((a, b) => a + b) }
+    ```
+    How do I debug this?
+  expect:
+    intent: code_question
+    data: {language: javascript}
+
+- id: code-sql
+  text: |
+    This SQL query is slow, how do I refactor it?
+    ```sql
+    SELECT * FROM orders WHERE total > 100;
+    ```
+  expect:
+    intent: code_question
+    data: {language: sql}
+
+- id: no-signal-is-not-guessed
+  text: "Can you take a look at this when you have a minute?"
+  expect:
+    status: [needs_review, completed]
+    tool: null
+
+- id: conflicting-signals-defer-to-the-llm-layer
+  text: "The invoice total looks wrong because my Python script has a bug."
+  expect:
+    method: [fallback, llm]
+
+# --- these need a real model: run with --backend groq|watsonx|huggingface|ollama ---
+
+- id: llm-invoice-paraphrase
+  requires_llm: true
+  text: "Hi, how much do I still owe you for the March website hosting?"
+  expect: {intent: invoice}
+
+- id: llm-academic-paraphrase
+  requires_llm: true
+  text: "My professor wants a five page reflection on the reading by Friday."
+  expect: {intent: academic_doc}
+
+- id: llm-code-paraphrase
+  requires_llm: true
+  text: "Why does my loop print the last value three times in Python?"
+  expect: {intent: code_question}
+
+- id: llm-other
+  requires_llm: true
+  text: "What is a good name for a golden retriever puppy?"
+  expect: {intent: other, tool: null}
+
+- id: llm-weak-invoice
+  requires_llm: true
+  text: "Please send me the invoice."
+  expect: {intent: invoice}
