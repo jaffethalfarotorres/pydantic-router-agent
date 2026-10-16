@@ -44,7 +44,9 @@ _RULES: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
     "role_hijack": re.compile(
-        r"\byou are (now|no longer)\b"
+        # "you are now" must introduce a new identity: "you are now enrolled" is benign.
+        r"\byou are now (a|an|the|my|in|dan|free)\b"
+        r"|\byou are no longer (bound|restricted|limited|an?)\b"
         r"|\b(developer|god|jailbreak|dan|unrestricted) mode\b"
         r"|\bact as (an? )?(unrestricted|unfiltered|jailbroken)\b",
         re.IGNORECASE,
