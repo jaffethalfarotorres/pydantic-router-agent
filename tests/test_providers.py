@@ -130,3 +130,41 @@ def test_ollama_needs_no_credentials(monkeypatch):
 def test_unknown_backend_name_is_rejected():
     with pytest.raises(ValueError, match="unknown backend"):
         backend_from_env("openai-but-not-really", {})
+
+
+def test_watsonx_from_env_wires_credentials_project_and_model(monkeypatch):
+    built = []
+
+    class FakeModelInference:
+        def __init__(self, *, model_id, credentials, project_id):
+            built.append({"model_id": model_id, "credentials": credentials, "project": project_id})
+
+        def chat(self, messages, params):
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+    sdk = SimpleNamespace(Credentials=lambda *, url, api_key: {"url": url, "api_key": api_key})
+    monkeypatch.setitem(sys.modules, "ibm_watsonx_ai", sdk)
+    monkeypatch.setitem(
+        sys.modules,
+        "ibm_watsonx_ai.foundation_models",
+        SimpleNamespace(ModelInference=FakeModelInference),
+    )
+    env = {"WATSONX_APIKEY": "test-key", "WATSONX_PROJECT_ID": "proj-1"}
+    backend = WatsonxBackend.from_env(env)
+    assert built == []  # models are built lazily, on first use
+    assert backend.complete(PROMPT, system=SYSTEM) == "ok"
+    assert built == [
+        {
+            "model_id": "ibm/granite-3-8b-instruct",
+            "credentials": {"url": "https://us-south.ml.cloud.ibm.com", "api_key": "test-key"},
+            "project": "proj-1",
+        }
+    ]
+
+
+def test_huggingface_from_env_passes_the_token(monkeypatch):
+    tokens = []
+    sdk = SimpleNamespace(InferenceClient=lambda *, token: tokens.append(token) or object())
+    monkeypatch.setitem(sys.modules, "huggingface_hub", sdk)
+    HuggingFaceBackend.from_env({"HF_TOKEN": "hf_test"})
+    assert tokens == ["hf_test"]

@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff==0.17.1"]
 watsonx = ["ibm-watsonx-ai>=1.1"]
 groq = ["groq>=0.9"]
 huggingface = ["huggingface_hub>=0.24"]
