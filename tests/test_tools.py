@@ -71,6 +71,21 @@ def test_regression_subtotal_is_never_read_as_the_total():
     assert result.data["subtotal"] == "70.00"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Invoice 7. Subtotal: $40.00. Tax: $5.20. Total due: $45.20",
+        "Invoice 7 | Subtotal: $40.00 | Tax: $5.20 | Total due: $45.20",
+        "Invoice 7; Subtotal: $40.00, Tax: $5.20, Total due: $45.20",
+    ],
+)
+def test_single_line_invoice_pasted_from_a_pdf_is_parsed(text):
+    result = extract_invoice_total(text)
+    assert result.data["total"] == "45.20"
+    assert result.data["subtotal"] == "40.00"
+    assert result.data["reconciles"] is True
+
+
 def test_subtotal_alone_is_not_a_total():
     assert extract_invoice_total("Subtotal: $70.00").status is ToolStatus.ERROR
 

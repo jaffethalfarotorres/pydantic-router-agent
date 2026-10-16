@@ -113,6 +113,9 @@ _PRIORITY = {"grand total": 3, "total due": 2, "amount due": 2, "balance due": 2
 _NOT_A_TOTAL = re.compile(r"sub[\s-]?total|total (tax|vat|discount)", re.IGNORECASE)
 _SUBTOTAL = re.compile(r"sub[\s-]?total", re.IGNORECASE)
 _TAX = re.compile(r"\b(tax|vat|iva)\b", re.IGNORECASE)
+# One labelled amount per segment: split on newlines, pipes, semicolons and on
+# ". " / ", " before a word, so "1,250.00" and "40.00" are never cut in half.
+_SEGMENT_BREAK = re.compile(r"\n|\s\|\s|;\s*|[.,]\s+(?=[A-Za-z])")
 
 
 def _amount_after(line: str, start: int) -> tuple[Decimal, str | None] | None:
@@ -134,7 +137,7 @@ def _labelled_amount(lines: list[str], label: re.Pattern[str]) -> Decimal | None
 def extract_invoice_total(text: str) -> ToolResult:
     """Total, currency, subtotal and tax, plus whether subtotal + tax == total."""
     name = "extract_invoice_total"
-    lines = text.splitlines()
+    lines = _SEGMENT_BREAK.split(text)
     best: tuple[int, int, Decimal, str | None] | None = None
     for index, line in enumerate(lines):
         if _NOT_A_TOTAL.search(line) or not (kind := _TOTAL_KINDS.search(line)):

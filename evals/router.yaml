@@ -37,6 +37,12 @@
     intent: invoice
     data: {total: "45000.00", currency: CRC}
 
+- id: invoice-single-line-from-pdf
+  text: "Invoice 7. Subtotal: $40.00. Tax: $5.20. Total due: $45.20"
+  expect:
+    status: completed
+    data: {total: "45.20", subtotal: "40.00", tax: "5.20", reconciles: true}
+
 - id: invoice-does-not-reconcile
   text: |
     Invoice 311
