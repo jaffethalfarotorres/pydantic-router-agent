@@ -82,6 +82,22 @@ def test_empty_provider_response_is_a_backend_error():
         backend.complete(PROMPT, system=SYSTEM)
 
 
+def test_a_reply_cut_at_the_token_cap_is_reported_as_truncated_not_as_bad_json():
+    backend = GroqBackend(FakeGroqClient('{"intent": "invoice", "conf', finish_reason="length"))
+    with pytest.raises(BackendError, match="truncated at max_tokens"):
+        backend.complete(PROMPT, system=SYSTEM)
+
+
+def test_completion_budget_leaves_room_for_reasoning_before_the_verdict():
+    from router_agent.providers.base import MAX_TOKENS
+
+    backend = GroqBackend(FakeGroqClient("ok"))
+    backend.complete(PROMPT, system=SYSTEM)
+    # The cap includes hidden reasoning: 33-73 tokens on the routing prompt, up to 510
+    # on a longer task with the same models.
+    assert backend._client.kwargs[0]["max_tokens"] == MAX_TOKENS >= 2048
+
+
 def test_watsonx_builds_each_model_once_and_reuses_it():
     factory = FakeWatsonxFactory("ok")
     backend = WatsonxBackend(factory)

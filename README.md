@@ -118,7 +118,7 @@ and the sentence became a unit test and a named eval regression case
 
 Measured on every push by [CI](.github/workflows/ci.yml), on Python 3.11, 3.12 and 3.13:
 
-- **125 tests, 98% line coverage**, no network and no credentials.
+- **127 tests, 98% line coverage**, no network and no credentials.
 - **Eval gates** (`python -m router_agent.eval`):
 
 ```text
@@ -134,14 +134,52 @@ injection    19        0    1.00    1.00  pass^k >= 1.00  PASS
   which exposed a weak test that was then fixed.
 
 Provider adapters are tested against fake clients whose call shapes were checked
-against each SDK's published source. Live-model eval runs are not part of CI because
-they need keys; the five `requires_llm` cases run with a real backend:
+against each SDK's published source.
+
+### Live model
+
+Measured locally on 2026-10-17 against Groq's free tier, 3 runs per case, temperature 0.
+CI cannot repeat this (it has no key), so these numbers are a snapshot, not a gate:
 
 ```bash
 pip install -e ".[groq]"            # or [watsonx], [huggingface], [ollama]
 export GROQ_API_KEY=...             # see .env.example for every provider
-python -m router_agent.eval --backend groq --k 3
+python -m router_agent.eval --backend groq --k 3 --json eval_report.json
+ROUTER_MODEL_SMALL=openai/gpt-oss-120b python -m router_agent.eval --backend groq --k 3
 ```
+
+| Small tier | Large tier | router pass@3 | router pass^3 | injection pass^3 |
+|---|---|---|---|---|
+| `openai/gpt-oss-20b` (default) | `openai/gpt-oss-120b` | **1.00** (19/19) | **1.00** (19/19) | 1.00 (19/19) |
+| `openai/gpt-oss-120b` | `openai/gpt-oss-120b` | **1.00** (19/19) | **1.00** (19/19) | 1.00 (19/19) |
+
+- 11 of the 38 cases reach the model: the 5 `requires_llm` paraphrases, the 2 router
+  cases where the regex layer abstains, and 4 benign inputs from the injection suite.
+  The other 27 are decided by the defense scan or the regex router, as designed.
+- In a traced run with the defaults the model answered all 11 with confidence 0.90 to
+  0.99, so the small tier did not escalate and the large tier was not called.
+- The 13 attacks in the injection suite are blocked before any model call, so its 1.00
+  measures the defense scan, not the model. Its 4 model-routed cases are benign
+  look-alikes ("ignore outliers in the dataset", "disregard the previous invoice"):
+  the suite only checks that they are not blocked, and in the traced run the model also
+  gave each one the intent a person would.
+
+### What the live run found that the tests could not
+
+- **The default Groq models no longer existed.** `llama-3.1-8b-instant` and
+  `llama-3.3-70b-versatile` both returned `404 model_not_found`: Groq has retired them,
+  so every LLM-routed input would have fallen back to `other` with confidence 0. The
+  tests could not notice, because none of them calls a provider. The defaults are now
+  `openai/gpt-oss-20b` and `openai/gpt-oss-120b`, the chat models Groq lists today.
+- **The token cap now has to cover hidden reasoning.** gpt-oss reasons before it
+  answers, and that reasoning counts against `max_tokens`. On the routing prompt it used
+  33 to 73 reasoning tokens and at most 115 in total (30 direct probes on both models),
+  so the old cap of 200 still fit, with little margin; the same models used up to 510
+  on the longer SQL task of
+  [nl-sql-duckdb-agent](https://github.com/jaffethalfarotorres/nl-sql-duckdb-agent).
+  The cap is now 2048, and the Groq backend reports a reply cut at
+  the cap as `truncated at max_tokens` instead of passing half a JSON object to the
+  router.
 
 ## Project layout
 
@@ -164,9 +202,15 @@ tests/             unit tests, fakes for every provider SDK
 - A regex scan is a first gate, not a complete injection defense. The code gate is
   what bounds the damage if something gets through.
 - The invoice parser reads US-style numbers (`1,250.00`); `1.250,00` is not supported.
-- Default model ids drift as providers retire models; override them with
-  `ROUTER_MODEL_SMALL` / `ROUTER_MODEL_LARGE`.
-- No published live-model eval numbers yet (CI has no provider keys).
+- Default model ids drift as providers retire models (the original Groq defaults did);
+  override them with `ROUTER_MODEL_SMALL` / `ROUTER_MODEL_LARGE`.
+- **Live numbers are a local snapshot, not a CI gate.** CI has no provider key, so a
+  change that makes the model worse would not fail CI. The numbers above come from one
+  provider (Groq), two models, 11 model-routed cases and k=3 on 2026-10-17: 1.00 means
+  the model got those 11 right every time, not that it never misroutes. Re-run
+  `python -m router_agent.eval --backend groq --k 3` to refresh them.
+- Only the Groq backend checks for a reply cut at the token cap. On the other providers
+  a truncated reply would still show up as a `not_json` fallback.
 
 ## License
 

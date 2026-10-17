@@ -17,7 +17,10 @@ from typing import ClassVar
 
 from router_agent.envelopes import ModelTier
 
-MAX_TOKENS = 200
+# The cap covers the whole completion, hidden reasoning included. gpt-oss used 33-73
+# reasoning tokens and at most 115 in total on the routing prompt (30 live probes,
+# 2026-10-17), and up to 510 on a longer task, so 200 left little margin.
+MAX_TOKENS = 2048
 
 
 class BackendError(RuntimeError):
