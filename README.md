@@ -211,6 +211,14 @@ tests/             unit tests, fakes for every provider SDK
   `python -m router_agent.eval --backend groq --k 3` to refresh them.
 - Only the Groq backend checks for a reply cut at the token cap. On the other providers
   a truncated reply would still show up as a `not_json` fallback.
+- **Backend errors count as failures.** A rate limit, a timeout or a truncated reply
+  becomes a zero-confidence fallback and scores the same as a misroute, so read the
+  failure text before reading a low number as model accuracy. The Groq client retries a
+  rate limit up to 6 times, waiting the server's `retry-after`: the free tier allows
+  8,000 tokens per minute per model, and the SDK's default 2 retries gave up mid-run in
+  [nl-sql-duckdb-agent](https://github.com/jaffethalfarotorres/nl-sql-duckdb-agent).
+  These resend the same request after a transport error; the router still never asks
+  the model again because it did not like the answer.
 
 ## License
 
